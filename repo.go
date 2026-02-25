@@ -1,5 +1,5 @@
 Package repo
 
-fun SayHi() string{
+func SayHi() string{
 	return string("hello from Github")
 }
