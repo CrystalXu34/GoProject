@@ -1,0 +1,797 @@
+1. URIs should never be changed. ❌
+  · 理论上应该尽量保持稳定，但有时不得不改变（如业务变化），用重定向解决。
+2. URIs must be constructed by the client. ❌
+  · 客户端不需要构造URI，服务器应提供 URI（如通过超媒体）。
+3. URIs should be short in length. ✅
+  · 简短 URI 更容易记忆和输入，但不是强制，是一种推荐实践。
+4. URIs should be case-sensitive. ✅
+  · 实际上 URI 是大小写敏感的（除协议、主机名部分外）。
+5. HTTP verbs should be used instead of operation names in URIs. ✅
+  · REST 最佳实践：用 HTTP 方法（GET, POST, PUT, DELETE）表示操作，不在 URI 中加入动作动词（如 /deleteItem）。
+6. Use spaces when designing a URL. ❌
+  · 不允许空格，应该用 %20 或连字符。
+7. Redirection must be used if a change in URI is required. ✅
+  · 当 URI 必须改变时，应该用重定向（如 301 Moved Permanently）。
+因此正确答案是： 3, 4, 5, 7。
+
+-----------------------------------------------------------------------------------------------------------
+实现 fizzBuzz 函数，根据输入整数 n，从 1 到 n 遍历并按规则输出：
+· 能被 3 和 5 整除 → "FizzBuzz"
+· 只能被 3 整除 → "Fizz"
+· 只能被 5 整除 → "Buzz"
+· 否则输出数字本身
+以下是 C 语言实现：
+
+#include <stdio.h>
+void fizzBuzz(int n) {
+   for (int i = 1; i <= n; i++) {
+       if (i % 3 == 0 && i % 5 == 0) {
+           printf("FizzBuzz\n");
+       } else if (i % 3 == 0) {
+           printf("Fizz\n");
+       } else if (i % 5 == 0) {
+           printf("Buzz\n");
+       } else {
+           printf("%d\n", i);
+       }
+   }
+}
+
+以下是 Go 语言实现：
+package main
+
+import (
+    "fmt"
+)
+
+func fizzBuzz(n int) {
+    for i := 1; i <= n; i++ {
+        if i%15 == 0 {
+            fmt.Println("FizzBuzz")
+        } else if i%3 == 0 {
+            fmt.Println("Fizz")
+        } else if i%5 == 0 {
+            fmt.Println("Buzz")
+        } else {
+            fmt.Println(i)
+        }
+    }
+}
+
+func main() {
+    fizzBuzz(20)
+}
+
+-----------------------------------------------------------------------------------------------------------
+我们逐一分析选项：
+· vector：在开头删除元素是 O(n)（需要移动后续元素），不符合。
+· deque（双端队列）：可以在 O(1) 时间内在开头或末尾删除元素（分块结构允许直接操作头尾）。
+· stack：只能在 末尾 删除（栈顶）是 O(1)，但无法在开头删除，不符合。
+· segment tree：不是线性容器，一般不在头尾删除，不适用。
+✅ 正确答案：deque
+
+-----------------------------------------------------------------------------------------------------------
+1. 代码逻辑
+```go
+func main() {
+   ch1 := make(chan int)
+   ch2 := make(chan int)
+   go func() {
+       v := 1
+       ch1 <- v               // (1) 发送给 ch1
+       fmt.Println("A")        // (2) 打印 A
+       v2 := <-ch2             // (3) 从 ch2 接收
+       fmt.Println("B")        // (4) 打印 B
+   }()
+   for i := 0; i < 10; i++ {
+       select {
+       case ch2 <- i:           // (5) 尝试发送到 ch2
+           fmt.Println("C")      // (6) 打印 C
+       case <-ch1:               // (7) 尝试从 ch1 接收
+           fmt.Println("D")      // (8) 打印 D
+       }
+   }
+   fmt.Println("E", v, v2)      // (9) 打印 E 和两个变量——但是 v, v2 在 main 里未定义？等一下！
+}
+```
+编译错误：
+fmt.Println("E", v, v2) 里的 v, v2 是 goroutine 里的局部变量，作用域在匿名函数内，main 里无法访问它们。
+所以原代码会编译错误。
+但考题假设没有编译错误，而是模拟逻辑上可能的输出——那么 v 和 v2 实际上不存在于 main 函数，所以 E 那一行可能会 undefined 错误，但在分析题中，我们只考虑 E 前的输出模式。
+---
+2. 执行流程推演
+1. main 启动 go func()，然后 for i:=0;i<10;i++ 循环执行 10 次 select。
+2. 同时，goroutine 开始执行：
+  · 先执行 ch1 <- v，这会阻塞，直到 main 中的 select 执行到 case <-ch1。
+  · 一旦 main 的 select 随机选择接收 ch1（即 case <-ch1），该 case 执行，打印 D，然后 goroutine 才能继续发送 v 到 ch1（其实数据已接收走，goroutine 的 ch1 <- v 完成）。
+  · 打印 A。
+  · 执行 v2 := <-ch2：阻塞，等待 main 发送数据到 ch2。
+  · main 中的 select 如果选择 ch2 <- i，打印 C，那么 ch2 有数据，goroutine 接收并打印 B。
+---
+3. 关键约束
+· 第一个 select 不可能一开始就执行 ch2 <- i，因为第一次循环时 goroutine 还在等 ch1 <- v，如果 select 先选了 ch2 <- i，发送成功（有缓冲吗？ch2 是无缓冲，所以必须对方准备好接收才能发）。
+   Wait：这里 ch2 是无缓冲，所以 ch2 <- i 成功的前提是 goroutine 在 <-ch2 处等待。第一次循环时 goroutine 在 ch1 <- v 处阻塞，所以 ch2 <- i 无法立即完成，select 会阻塞，直到 <-ch1 或 ch2 <- i 条件满足。
+   所以要么是 <-ch1 执行（D），要么是 ch2 <- i 执行（C），但后者必须等 goroutine 到达 <-ch2。
+· 分析顺序：
+ 1. goroutine 启动 → 卡在 ch1 <- v。
+ 2. main 执行 for 循环第一次 select：
+         case ch2 <- i：goroutine 不在 <-ch2，不能发，所以这个 case 不会立即成功 → 阻塞，直到 goroutine 执行 <-ch2。
+         case <-ch1：立即可以执行，因为 goroutine 正等待发送 ch1。
+         所以第一次 select 必定是 <-ch1（打印 D）。
+ 3. D 打印后，ch1 收到值，goroutine 继续执行：打印 A，然后到 <-ch2 等待。
+ 4. 下一次循环（第二次 select）：现在 goroutine 在 <-ch2 等待，所以 ch2 <- i 能成功，<-ch1 会阻塞（goroutine 不在发送 ch1）。
+         select 随机选 C 或 D？
+         如果选 C：发送到 ch2，打印 C，goroutine 得到数据，打印 B。
+         那么 B 和 C 谁先打印？
+    · 如果 main 的 select 先打印 C，然后 goroutine 才能打印 B，所以 B 在 C 之后打印。
+           之后 goroutine 循环结束？
+           没有循环，goroutine 里没有循环，它只接收一次 <-ch2，打印 B 后就结束了。
+ 所以一次 D（第一次）后，只会出现一次 C，之后 goroutine 完成退出。
+---
+4. 可能的输出
+输出顺序由 D, A, (C, B 顺序不定？)
+实际上 goroutine 内部：
+1. 打印 A 在第一次 <-ch1 完成后立刻打印（在 main 打印 D 之后，但在 main 第二次 select 之前）。
+2. 然后 goroutine 在 <-ch2 阻塞。
+3. main 第二次 select 时，如果选了 ch2 <- i：打印 C，然后 goroutine 得到数据打印 B。
+所以必然顺序：
+· D （main 的 select case <-ch1）
+· A （goroutine）
+· （然后 main 第二次 select：要么 C 然后 B，要么 D 但此时 <-ch1 不能执行（goroutine 不在发送 ch1，所以只能 C））。
+    等一下：第二次 select 两个 case 都能用吗？
+ · ch2 <- i：goroutine 在等待，可用。
+ · <-ch1：goroutine 不在发送 ch1，不可用。
+      所以第二次 select 必定是 ch2 <- i（C）成功，不是随机选。
+所以第二次 select 是 C。
+C 打印后，goroutine 的 <-ch2 完成，打印 B。
+所以输出是：D A C B。
+后面 main 继续循环 8 次（i=2 到 9），但 select 的两个 case：
+· <-ch1：goroutine 已结束，无发送者，会 panic，所以程序会 panic，但如果我们假设 panic 之前执行这些打印，那后面的 select 每次都会随机选？ 实际上无缓冲 chan 发送或接收时如果对方已结束，会 panic。所以到 panic 前可能还打印几次 C？
+   但 goroutine 已经结束，ch2 <- i 会 panic（因为对方已退出）。所以第二次循环后，第三次 select 时两个 case 都会 panic，所以程序终止。
+所以最终真实输出是 D A C B 然后 panic。
+但题中给出的选项没有 panic，说明他们假设 goroutine 在第二次循环结束后立即退出，然后 main 可能在某个循环时退出？不合理。
+更可能的情况是：在第二次循环后 goroutine 结束，chan 无接收者，发数据会死锁。所以 2 次循环后程序卡死，不会打印更多。
+题中选项有 ADBCE，DABC，ABCDE，DABCE，DACB。
+DACB 不可能，因为 C 一定在 B 前。
+ABCDE 不可能，因为必须以 D 开头（第一次 select 必定是 D）。
+ADBCE 不可能，因为 A 在 D 前，但 A 必须在 D 之后。
+DABC 可能：D A (B 在 C 之前？) 但 B 在 C 前需要 C 先？
+C 在 B 前，所以 D A C B，那就是 DACB 去掉？ DABC 顺序是 B 在 C 前，不可能。
+所以唯一不可能的选项是 DABC，因为它 B 在 C 前，违反执行顺序（C 在 B 前）。
+---
+5. 答案
+不可能的输出是 DABC。
+
+-----------------------------------------------------------------------------------------------------------
+1. 题意
+有一个 Sender 接口，定义了一个 Send(Message) 方法。
+有一个 Process(sender Sender) 函数，它接受一个实现了 Sender 接口的参数。
+有一个独立的 Send(Message) 函数，它不是方法。
+问题是：如何调用 Process 函数，传入 Send 函数（而不是接口实现）？
+---
+2. Go 语言中的接口与适配
+Process 需要一个类型，这个类型有 Send(Message) 方法。
+而 Send 是一个普通函数，不是方法，所以不能直接当作 Sender 传给 Process。
+要让函数适配接口，常用的方法是定义一个函数类型，并让该函数类型实现接口的方法，方法内部调用函数本身。
+---
+3. 选项分析
+---
+选项 1：Use Process(Send)
+❌ 不行。
+Send 是一个函数，不是 Sender 类型，不能直接传给需要 Sender 接口的地方。
+---
+选项 2：Define a new struct type, MySender, with a method func (m MySender) Send(Message) that calls Send function.
+✅ 可行。
+这是最直接的方法：定义一个空结构体 MySender，给它加一个 Send(Message) 方法，方法内部调用全局函数 Send。
+然后可以创建 MySender{} 传给 Process。
+---
+选项 3：Define a function type SendFunc as func(Message), then define a method (s SendFunc) Send(m Message) return s(m), and call Process(SendFunc(Send)).
+✅ 可行。
+定义 type SendFunc func(Message)，它作为函数类型。
+让 SendFunc 类型实现 Sender 接口的方法 Send(m Message) { s(m) }。
+然后 SendFunc(Send) 把函数 Send 转换成 SendFunc 类型，这个转换后的值有 Send 方法，符合接口，可以传给 Process。
+这是 Go 里很常见的适配函数到接口的方式。
+---
+选项 4：Define a function type SendFunc as func(Message), then define a method (s SendFunc) Send(m Message) return s.Send(m) and call Process(SendFunc(Send)).
+❌ 不可行。
+s 是函数类型 func(Message)，没有 Send 方法，所以 s.Send(m) 是错误的。
+应该是 s(m) 才对。
+这里写法错误。
+---
+4. 正确选项
+正确可行的：选项 2 和 选项 3。
+---
+最终答案：
+✅ 选项 2
+✅ 选项 3
+-----------------------------------------------------------------------------------------------------------
+1. 代码执行过程
+```go
+func main() {
+   a := make([][]int, 0, 10)          // (1) a 是 [][]int，len=0, cap=10
+   a = append([]int{0, 1, 2}, 1)       // (2)
+   b := append(a, 1)                   // (3)
+   a = append(a, 3)                    // (4)
+   fmt.Println(a, b)
+}
+```
+第 (1) 行
+a := make([][]int, 0, 10)
+a 是一个切片，长度 0，容量 10，元素类型是 []int。
+此时 a 的底层数组是一个长度为 10 的 []int 类型的数组（实际上每个元素是 nil 切片）。
+---
+第 (2) 行
+a = append([]int{0, 1, 2}, 1)
+先看右边：append([]int{0, 1, 2}, 1)
+· []int{0,1,2} 是一个新分配的底层数组，长度 3 容量 3。
+· 给它 append(1)，容量够，所以原地 append：[0,1,2,1]。
+   返回值是 []int 类型，长度 4，容量 3？等一下，[]int{0,1,2} 长度 3 容量 3，append 时容量不够（要存 4 个元素），所以会分配新数组（容量一般是 2*oldCap 之类的扩容规则）。
+   其实 Go 的 append 如果容量不够，会重新分配更大的数组。
+   原始 []int{0,1,2} 长度 3 容量 3，append 1 时需要长度 4，所以分配新数组，容量可能 6（或者至少 4 以上）。
+   新数组内容：[0,1,2,1]，长度 4，容量 >=4。
+   返回值赋给 a。
+   此时 a 是什么类型？
+   a 原本是 [][]int，但右边 append([]int{0,1,2},1) 返回 []int，赋值给 a 会编译错误，因为类型不同！
+---
+这里有问题，需要仔细看：
+```go
+a := make([][]int, 0, 10)   // a 是 [][]int
+a = append([]int{0, 1, 2}, 1)  // 编译错误：类型不匹配
+```
+是的，这里编译错误，[][]int 不能直接赋值 []int。
+所以这段代码不可能打印出任何结果，编译时就失败。
+但如果题目假设这是一个逻辑题，忽略类型错误，只看打印的话：
+---
+假设忽略类型错误，把 a 视为 []int（虽然这是错的），继续推演：
+1. a := make([]int, 0, 10) 初始化长度 0 容量 10 的 []int。
+2. a = append([]int{0, 1, 2}, 1) 得到 [0,1,2,1]。
+3. b := append(a, 1)：a 是 [0,1,2,1]，长度 4 容量 10（因为 a 最初是 make 的容量 10 的 []int，但 a 被重新赋值覆盖了，容量可能会变，但这里按 append 规则，a 从右值得到，右值 []int{0,1,2} 再 append(1) 的结果容量可能是 4 或 6 等）。
+     我们假设 a 长度 4 容量 6（随意假设不影响结果）。
+     append(a, 1) 容量够，所以 b 和 a 共享底层数组，b 长度 5，内容 [0,1,2,1,1]。
+4. a = append(a, 3)：a 长度 4 容量 6，append 3 容量够，在位置 4 写入 3，a 变成 [0,1,2,1,3]，长度 5。
+     这时 b 和 a 共享底层数组，所以 b 的最后一个元素也被改成 3？
+     不对，步骤 3 时 b 的长度是 5，内容是 [0,1,2,1,1]，a 长度 4。
+     步骤 4 append 修改了原数组索引 4 处的值（从 1 改成 3），这个位置 b 也能看到，因为 b 的索引 4 也是同一个位置。
+     所以 b 变成 [0,1,2,1,3]，a 变成 [0,1,2,1,3]。
+     最终 a 和 b 相同：[0,1,2,1,3]。
+所以最终打印 a = [0 1 2 1 3]，b = [0 1 2 1 3]。
+对应选项 [01213][01213]。
+---
+但这是忽略类型错误的推理。实际上代码编译错误，没有输出。
+但考题可能设计为逻辑推理题，让选出可能的结果，按这个推理答案就是 [01213][01213]。
+---
+4. 选项对照
+· [01213][01212] ❌
+· [01213][01213] ✅  (按推理)
+· [01212][01211] ❌
+· [01213][01211] ❌
+· [01211][01213] ❌
+---
+最终答案：
+[01213][01213]
+-----------------------------------------------------------------------------------------------------------
+图片中的代码不完整且包含错误，没法直接运行。但结合题目里片段和可能的上下文推断，这应该是考类型断言 + 指针或值修改的影响。
+---
+1. 代码分析
+```go
+func add(input any, value int) {
+   switch v := input.(type) {
+   case int:
+       *value++        // ❌ value 是 int，不能取值，会编译错误
+   case float64:
+       *float64(*value)  // ❌ 语法错误，这不是赋值
+   }
+}
+```
+如果修复成能运行的逻辑，可能是这样：
+```go
+func add(input any, value int) int {
+   switch v := input.(type) {
+   case int:
+       value += v      // 假设是想加 input 到 value
+   case float64:
+       value += int(v) // 类型转换
+   }
+   return value
+}
+```
+但题目没给 main 调用。
+---
+2. 猜测调用
+常见题目：
+```go
+func main() {
+   a := 1
+   add(1, a)
+   fmt.Println(a)
+}
+```
+如果 add 里改的是形参 value，不会影响实参 a，那么打印 1（但选项里没有 1）。
+如果 add 里改的是指针：
+```go
+func add(input any, value *int) {
+   switch v := input.(type) {
+   case int:
+       *value += v
+   case float64:
+       *value += int(v)
+   }
+}
+func main() {
+   a := 1
+   add(1, &a)
+   fmt.Println(a) // 2
+}
+```
+输出 2。
+但题目给的选项有 12, 22, 00, 21，没有 2。
+如果调用两次：
+```go
+func main() {
+   a := 1
+   add(1, &a)  // a=2
+   add(2, &a)  // a=4
+   fmt.Println(a) // 4
+}
+```
+也不匹配。
+---
+3. 匹配选项
+看选项 12, 22, 00, 21，像是两个数字的输出，比如两次打印。
+常见考题：
+第一次打印 add(1, 1) 返回 2，第二次 add(2.0, 2) 返回 4，组合成 24？没有。
+也可能是这样：
+```go
+func add(input any, value int) int {
+   switch v := input.(type) {
+   case int:
+       return value + v
+   case float64:
+       return value + int(v)
+   }
+   return value
+}
+func main() {
+   fmt.Print(add(1, 1))  // 2
+   fmt.Print(add(2.0, 2)) // 4
+}
+// 输出 24，也不在选项
+```
+---
+唯一贴近选项的可能是输出 21：
+第一次调用返回 2，第二次返回 1，但必须 value 被重置。
+因为题目片段不完整，最大可能是考点是：
+· 如果 input 是 int，value 加 input，如果 input 是 float64，转 int 再加。
+· 但 value 是传值，所以外层 a 不变，那么输出 a 原来的值。
+所以假设 main 里 a=1，调用 add 后 a 还是 1，加个 a=2 再调用，第一次输出 1，第二次输出 2，连起来 12。
+---
+4. 可能答案
+按常见题和选项，选 12。
+---
+最终答案：12
+-----------------------------------------------------------------------------------------------------------
+1. 代码分析
+```go
+type customError struct {
+   msg string
+}
+func (c *customError) Error() string {
+   return c.msg
+}
+func f() error {
+   var err *customError
+   return err
+}
+func main() {
+   if err := f(); err != nil {   // 代码被截断，但推测原意是判断 err
+       fmt.Println("Error")
+   } else {
+       fmt.Println("No error")
+   }
+}
+```
+但题中给的代码是：
+```go
+if err != f() { err = nil }
+fmt.Println(err)
+} else {
+   fmt.Println("No error")
+}
+```
+这里语法错误：
+· if 语句条件后跟 { err = nil } 不完整，然后直接 fmt.Println(err) 在外面？
+· } else { 和前面 if 不匹配，因为 if 后面没有左大括号开始。
+但按常见的这类考题逻辑，重点是 f() 返回 *customError 类型的 nil，赋值给 error 接口。
+---
+2. 接口与 nil 的陷阱
+Go 中：
+· var err *customError 是 nil 指针。
+· 返回 err 时，返回值类型是 error 接口。
+· 接口包含两个东西：类型和值。
+ · 类型 = *customError
+ · 值 = nil
+所以接口变量不是 nil，因为它有类型信息（*customError），即使它指向的值是 nil，接口本身 != nil。
+因此在 main 中判断 err != nil 为 true。
+---
+3. 对应选项
+选项：
+1. ❌ It prints "Error" because err is not nil.
+     （正确，err != nil 为真，输出 "Error"）
+2. ❌ It prints "<nil>" because err is of the customError type.
+     （不会打印 <nil>，因为判断 err != nil 为真）
+3. ❌ It prints "No error" because err is nil.
+     （错误，err 不是 nil）
+4. ❌ The program does not compile because customError is not an error.
+     （customError 实现了 Error 方法，是 error）
+5. ❌ The output is undefined because err is not initialized.
+     （err 已初始化，是 nil 指针）
+唯一正确选项是 第一个：打印 "Error"。
+---
+但代码在 if err != f() { err = nil } 那里语法错，如果编译失败那就不打印。不过题问的应该是逻辑结果。
+---
+按常见考题的标准答案：
+最终答案：It prints "Error" because err is not nil.
+-----------------------------------------------------------------------------------------------------------
+这段代码试图统计每个字符串在切片中最后一次出现的索引，但有个语法错误：
+---
+1. 修正语法
+第一处：
+```go
+for i, s:=range []string{"a","b","c","d","a","b","c"}
+```
+后面直接接 m[s]=i，在 Go 中 range 循环必须有大括号，所以这里编译错误。
+假设正确写法是：
+```go
+func main() {
+   m := make(map[string]int)
+   for i, s := range []string{"a","b","c","d","a","b","c"} {
+       m[s] = i
+   }
+   for k, v := range m {
+       fmt.Println(k, v)
+   }
+}
+```
+---
+2. 执行过程
+切片索引和值：
+· 0 a
+· 1 b
+· 2 c
+· 3 d
+· 4 a
+· 5 b
+· 6 c
+循环结束后 m 的内容：
+· "a" → 4 (最后一次 a 在索引 4)
+· "b" → 5 (最后一次 b 在索引 5)
+· "c" → 6 (最后一次 c 在索引 6)
+· "d" → 3
+所以最终 map 有 4 个键值对："a":4, "b":5, "c":6, "d":3。
+---
+3. 输出
+Go 的 map 迭代顺序不固定，所以可能的输出是这四个键值对的任意排列。
+题目问 "What are the possible outputs"，没有选项。
+但常见答案就是：a 4 b 5 c 6 d 3 的任意顺序。
+-----------------------------------------------------------------------------------------------------------
+1. 代码修正与理解
+原代码：
+```go
+func main() {
+   m := make(map[string]int)
+   for i, s := range []string{"a", "b", "c", "d", "a", "b", "c"} {
+       m[s] = i
+   }
+   for k, v := range n { // 这里 n 应该是 m
+       fmt.Println(k, v)
+   }
+}
+```
+循环遍历切片：
+· i：索引 0~6
+· s：a, b, c, d, a, b, c
+每次 m[s] = i 会把该键的值更新为当前索引。
+---
+2. 最终 map 内容
+最后一次出现的索引：
+· "a" → 索引 4
+· "b" → 索引 5
+· "c" → 索引 6
+· "d" → 索引 3
+所以 map 在循环结束时包含：
+a:4, b:5, c:6, d:3
+---
+3. 输出可能顺序
+Go 对 map 的迭代顺序不固定，所以可能的输出是这 4 个键值对的任意排列。
+给定选项：
+1. ✅ a 4 b 5 c 6 d 3（顺序是 a, b, c, d）
+2. ❌ a 1 b 2 c 3 d 4（值不对）
+3. ❌ a 0 b 1 c 2 d 3（值不对）
+4. ✅ b 5 c 6 a 4 d 3（顺序 b, c, a, d）
+5. ❌ b 1 c 2 a 0 d 3（值不对）
+---
+4. 正确选项
+可能输出的：
+· 选项 1
+· 选项 4
+---
+最终答案：选项 1 和 选项 4 ✅
+-----------------------------------------------------------------------------------------------------------
+我们分析这个函数的行为，以及题目最后的说明（多个相同程序的实例可能同时运行）。
+---
+1. 代码分析
+函数签名：
+```go
+func CreateAndWrite(name string, data []byte) error
+```
+代码步骤（有问题）：
+1. finfo, err := os.Create(name)
+     ❌ 这里应该是 os.Stat，但用了 os.Create。
+     os.Create 会创建（或截断）文件并返回文件对象，不是返回 os.FileInfo。
+     所以 finfo, err := os.Create(name) 编译错误。
+     这是题目故意设的 bug？可能我们按语义推测意图：用 os.Stat 判断文件是否存在。
+2. if lerrors.Is(err, os.ErrNotExist) 应该是 if errors.Is(err, os.ErrNotExist)。
+     意图是：如果文件不存在，继续执行；否则返回错误。
+3. if finfo.IsDir()：如果存在且是目录，返回错误。
+4. file, err := os.Create(name)
+     这里再次创建文件，会截断已有文件（如果之前存在且不是目录）。
+5. 如果创建文件出错，返回 nil, err？ 这里 return nil, err 在返回 error 的函数里不正确，应该是 return err。
+6. defer file.Close()
+7. _, err := file.Write(data) 短声明重复定义了 err（前面已有 err 变量），编译错。
+---
+2. 行为推断（忽略编译错误）
+假设逻辑修正为：
+· 用 os.Stat 检查文件是否存在。
+· 如果文件不存在，创建它并写入。
+· 如果文件存在且是目录 → 错误。
+· 如果文件存在且是普通文件 → 仍然 os.Create 会覆盖它（截断为空文件）再写入。
+所以：
+· 如果文件存在，会被覆盖（选项 3 真）。
+· 如果写入少于所有数据（Write 可能写入部分数据，需要循环），但这里只调用一次 Write，可能写入部分数据并返回 error=nil（实际应检查 n），所以选项 2 也真。
+---
+3. 多个实例同时运行
+· 两个实例同时调用，可能一个在 os.Stat 后另一个也在操作，都认为文件不存在，然后都 os.Create，可能会互相覆盖。
+· 写入时可能交错，导致数据错乱或部分丢失。
+---
+4. 选项判断
+· ❌ 选项 1：The function should have returned all errors from os.Stat.
+   但这里没用 os.Stat，用的 os.Create，不过就算用了，也不一定要返回所有 Stat 错误（比如权限错误可返回）。
+· ✅ 选项 2：The function may return without writing all data.
+   对，因为 Write 可能写入部分数据并返回 nil，函数直接返回 err，没检查 n。
+· ✅ 选项 3：The function may overwrite an existing file.
+   对，第二次 os.Create 会覆盖。
+· ❌ 选项 4：The function will fail if the file exists.
+   错，它不会失败，会覆盖。
+---
+最终答案：选项 2 和 选项 3 ✅
+-----------------------------------------------------------------------------------------------------------
+1. 代码分析
+type Node 有 Children []*Node（存的是指针）。
+函数 NewChild(node Node) Node：
+· 创建一个新 child 节点（局部变量）
+· node.Children = append(node.Children, &child)：将 child 的地址加入 node.Children。
+· 返回 child（按值返回）。
+main 中：
+· root := Node{}：root 是一个空节点，Children 是 nil。
+· child := NewChild(root)：把 root 传进函数。
+· 打印 len(root.Children)。
+---
+2. 传值问题
+Go 中函数参数是传值。
+NewChild(root) 传的是 root 的副本（值拷贝）。
+在函数内部修改 node.Children 只是在副本上修改，不会影响 main 里的 root.Children。
+所以 len(root.Children) 打印 0（原 root 没变）。
+---
+3. 函数语义
+注释说：“Create a new child node and return that child”
+· 它确实创建了新节点并返回了它（按值返回）。
+· 但返回的是副本，不是原始 child 变量，这不影响使用（可以正常用）。
+· 更大的问题是：它没把 child 真正加到 root 里。
+---
+4. 正确修改
+为了让 root.Children 包含 child 指针，需要传入 *Node：
+```go
+func NewChild(node *Node) Node {
+   child := Node{}
+   node.Children = append(node.Children, &child)
+   return child
+}
+```
+这样传入 root 的地址，修改会生效。
+或者返回 *Node 也可以，但那样是返回 child 的地址，不是 child 副本。
+---
+5. 选项对应
+打印 0 因为传值。
+修改方法：NewChild(*Node) Node 或 NewChild(*Node) *Node。
+选项里：
+· 打印 0 + 改成 NewChild(*Node) Node → 选项 3
+· 打印 0 + 改成 NewChild(*Node) *Node → 选项 4
+看哪个符合题意：
+“It prints 0 because root is passed by value. The function should be declared as NewChild(Node) Node.” ✅
+“It prints 0 because root is passed by value. The function should be deleted as NewChild(Node) *Node.” ❌（deleted 是 typo，应是 declared，且返回 *Node 也行，但注释要求返回 child，不是必须返回指针）
+更精确的是 选项 3（返回 Node 即可，因为返回的是 child 副本，不影响使用，只是 root 指针需要修改）。
+---
+最终答案：选项 3 ✅
+-----------------------------------------------------------------------------------------------------------
+这段 JSON 的键是字符串（如 "k1"），值都是数组，数组元素是数字。
+---
+1. 分析数据结构需求
+· 键：string（JSON 的键总是 string）
+· 值：数组，元素是数字
+· 数字可能是 int 或 float64，但 JSON 数字在 Go 里 unmarshal 到 interface{} 默认是 float64；如果明确是整型可以 unmarshal 到 []int。
+最适合直接 unmarshal 的结构：
+map[string][]int 或 map[string][]float64。
+---
+2. 看选项
+选项里都是 map[string]int 或 map[string]string，但没有一个能直接对应值类型 []int。
+可能题目本意是选最接近的，但都没有。
+如果一定从给定选项里选，都不是正确 unmarshal 这个 JSON 的。
+但假如我们推测题目想要的是 map[string][]int 但没给，那么正确选项就是没有。
+可是这是单选题，可能他们把 map[string]int 打了两遍作为混淆，但意思一样，所以没有正确选项。
+---
+3. 题目里选项是重复的
+看它给的两个选项都是 map[string]int 重复了一次，可能排版错误。
+按实际 JSON 结构，正确是 map[string][]int。
+但题问“What data structure can be used”，给的没有对的。
+---
+4. 可能的意图
+如果 JSON 里每个键对应一个 int（但这里不是），那么才选 map[string]int。
+但这 JSON 每个键对应一个 []int。
+---
+如果一定要从给出的选，唯一能 unmarshal 这个 JSON 的是 map[string]interface{}，但没给。
+所以此题可能设计有误，按题意应选 map[string][]int，但选项无。
+---
+由于没有正确选项，按惯例可能是 map[string]int 重复出现，但实际它不能直接 unmarshal 这个 JSON。
+如果这是一个陷阱题，可能正确答案是“none of the above”，但选项没有。
+---
+推测出题意图错误，但按选项只有一个类型可用时：
+map[string]int ❌ 不行。
+没有正确选项，可能期望是 map[string][]int，但没给。
+-----------------------------------------------------------------------------------------------------------
+1. 函数 AddN
+AddN(n int) func(*int) 返回一个函数，这个函数接收一个 *int 指针，把 *x 加上 n。
+---
+2. main 函数
+```go
+a := AddN(1)   // a 是 func(*int) { *x += 1 }
+b := AddN(2)   // b 是 func(*int) { *x += 2 }
+var c int      // c = 0
+a(&c)          // c += 1 → c = 1
+b(&c)          // c += 2 → c = 3
+fmt.Println(c) // 3
+```
+---
+3. 最终输出
+3 ✅
+-----------------------------------------------------------------------------------------------------------
+1. 代码逻辑
+```go
+func main() {
+   i := 0
+   ch := make(chan struct{})
+   go func() {
+       i++          // (A)
+       close(ch)    // (B)
+       i++          // (C)
+   }()
+<-ch             // (D)
+   fmt.Println(i)
+}
+```
+· 主 goroutine 在 <-ch 阻塞，直到 ch 被关闭或收到值。
+· 新 goroutine 先执行 i++，然后 close(ch)，再 i++。
+---
+2. 执行顺序不确定性
+· 新 goroutine 里 i++ (A) 一定在 close(ch) (B) 之前执行。
+· close(ch) 后，主 goroutine 的 <-ch 立即解除阻塞，继续执行 fmt.Println(i)。
+· 主 goroutine 解除阻塞后，可能继续执行，而新 goroutine 可能还没执行 i++ (C)，也可能已经执行了。
+所以：
+· 如果主 goroutine 在 (C) 之前执行打印，i 的值是 1（只有 A 执行了）。
+· 如果主 goroutine 在 (C) 之后执行打印，i 的值是 2（A 和 C 都执行了）。
+---
+3. 可能输出
+i 可能是 1 或 2。
+选项：
+· Sometimes 1, sometimes 2 ✅
+---
+最终答案：Sometimes 1, sometimes 2
+-----------------------------------------------------------------------------------------------------------
+看代码：
+```go
+func Cleanup(rootDir string) error {
+   if err != os.GoString("") {
+       return err
+   }
+   return os.GoString("")
+}
+```
+这根本是无效的 Go 代码（err 未定义，os.GoString 不存在）。
+但题中可能原本是：
+```go
+err := os.RemoveAll(rootDir + "/temp")
+if err != nil {
+   return err
+}
+return os.RemoveAll(rootDir + "/temp2")
+```
+这样用 + "/" 拼接路径在非 Unix 系统（如 Windows）上可能失效。
+所以问题是用 / 硬编码分隔符，应改用 filepath.Join。
+---
+可能原因
+如果路径拼接有误（例如 Windows 上 rootDir + "/temp" 可能变成 C:\mydir/temp，正斜杠也通常能工作，但有时不保险），更可靠的是 filepath.Join(rootDir, "temp")。
+另外也可能在部分机器上第一个目录删除失败就返回，第二个没删。
+但选项里唯一靠谱是路径分隔符问题。
+---
+看选项
+· ❌ RemoveAll 在所有系统上都有，不是问题。
+· ⚠️ 第二个选项：第一个失败就返回，没删第二个 — 这可能是问题之一，但代码未展示逻辑，只能推测。
+· ✅ 使用 filepath.Join 避免路径分隔符问题 — 这在跨平台中常见。
+· ❌ 它不会因为目录不存在而失败，RemoveAll 在目录不存在时返回 nil（不是错误）。
+最可能是第三个。
+---
+最终答案：选项 3 ✅
+-----------------------------------------------------------------------------------------------------------
+我们分析这个函数的行为。
+---
+1. 函数逻辑
+```go
+func splitAndProcess(values ...int) int {
+   lowerHalf := values[0 : len(values)/2]
+   upperHalf := values[len(values)/2:]
+   y := process(append(lowerHalf, 10))
+   x := process(append(upperHalf, 10))
+   return x + y
+}
+```
+· lowerHalf 和 upperHalf 是 values 切片的两个子切片，共享同一底层数组。
+· append(lowerHalf, 10)：
+ · 如果 lowerHalf 长度 < 容量，直接在底层数组 lowerHalf[len(lowerHalf)] 位置写入 10，并返回新切片。
+ · 这可能会覆盖 upperHalf[0] 原本的值，因为它们共享底层数组。
+---
+2. 举例
+假设 values := []int{1, 2, 3, 4}，len=4。
+· lowerHalf = values[0:2] → [1,2]，cap=4（因为来自 values）
+· upperHalf = values[2:4] → [3,4]，cap=2
+执行 append(lowerHalf, 10)：
+lowerHalf 长度 2，容量 4，所以原地 append，在下标 2 写入 10，底层数组变成 [1,2,10,4]，返回 [1,2,10]。
+但 upperHalf 还是 [3,4] 吗？
+不，底层数组下标 2 已改成 10，所以 upperHalf 现在指向的底层数组是 [10,4]，即 upperHalf 变成了 [10,4]。
+然后 append(upperHalf, 10)：
+upperHalf 现在是 [10,4]，长度 2，容量 2（因为子切片从 index=2 开始，容量是原数组长度 - index = 4-2=2），所以 append 需要扩容，分配新数组，不会影响 lowerHalf。
+但第一个 append 已经破坏了 upperHalf 原本的值。
+---
+3. 问题所在
+· 第一个 append 修改了 lowerHalf 的底层数组，这个修改影响了 upperHalf 的第一个元素。
+· 第二个 append 由于 upperHalf 容量不够，会分配新数组，不影响原数组，但第一个 append 已经造成数据错误。
+所以 upperHalf 在被传给 process 时已经和预期不同。
+---
+4. 对应选项
+· ❌ There is nothing wrong
+· ✅ Appending to the lowerHalf slice overwrites the first element of the upperHalf slice.
+· ❌ Appending to the upperHalf slice corrupts the lowerHalf slice（第二个 append 不会影响 lowerHalf）
+· ❌ 后面两个明显错
+---
+最终答案：选项 2 ✅
+-----------------------------------------------------------------------------------------------------------
+看代码：
+```go
+go func() {
+   runLongProcess(context.Context, time.Minute), request()
+}()
+```
+这里语法有问题，但按语义推测：
+runLongProcess(context.Context, time.Minute), request() 可能是想调用 runLongProcess 传入一个超时 1 分钟的 context。
+关键点：
+如果 runLongProcess 接收一个 context，这个 context 可能是从请求或其他地方来的，而 handler 返回后，与请求关联的 context 可能被取消。
+Go 的 *http.Request 带有 Context()，在客户端断开连接或请求完成后会 cancel。
+如果 runLongProcess 用了 req.Context()，在 handler 返回后 context 就被 cancel 了，所以 goroutine 里的任务提前终止。
+---
+选项分析
+· ❌ The timeout may be too short（题目说 1 分钟足够）
+· ✅ The context cancels before timeout is reached（对，因为用了请求的 context）
+· ❌ The long process errors out before completing（未知）
+· ❌ The request may be invalid（已校验）
+---
+最终答案：选项 2 ✅
+-----------------------------------------------------------------------------------------------------------
+

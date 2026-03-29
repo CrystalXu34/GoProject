@@ -1,0 +1,68 @@
+func ServerWithTimeout(
+    matchChan chan bool,
+    errChan chan error,
+    requestStrChan chan bool,
+    resultStrChan chan string,
+    requestRegChan chan bool,
+    resultRegChan chan *regexp.Regexp,
+) {
+    timeoutErr := errors.New(timeoutError)
+
+    const commTimeout = 100 * time.Millisecond
+
+    for i := 0; i < steps; i++ {
+        select {
+        case requestStrChan <- true:
+        case <-time.After(commTimeout):
+            errChan <- timeoutErr
+            return
+        }
+
+        select {
+        case requestRegChan <- true:
+        case <-time.After(commTimeout):
+            errChan <- timeoutErr
+            return
+        }
+
+        var (
+            s          string
+            r          *regexp.Regexp
+            gotStr     bool
+            gotRegexp  bool
+        )
+
+        for !gotStr || !gotRegexp {
+            select {
+            case s = <-resultStrChan:
+                gotStr = true
+            case r = <-resultRegChan:
+                gotRegexp = true
+            case <-time.After(commTimeout):
+                errChan <- timeoutErr
+                return
+            }
+        }
+
+        done := make(chan bool, 1)
+        go func(s string, r *regexp.Regexp) {
+            match := r.MatchString(s)
+            done <- match
+        }(s, r)
+
+        timeout := 100 * time.Millisecond
+
+        select {
+        case m := <-done:
+            select {
+            case matchChan <- m:
+            case <-time.After(commTimeout):
+                errChan <- timeoutErr
+                return
+            }
+        case <-time.After(timeout):
+            errChan <- timeoutErr
+            return
+        }
+    }
+}
